@@ -1,0 +1,12 @@
+/results/
+*.jtl
+*.log
+/apache-jmeter-*/
+*.tgz
+*.zip
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+.idea/
+.vscode/
