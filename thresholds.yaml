@@ -1,0 +1,15 @@
+global:
+  error_rate_pct_max: 0.5
+  min_throughput_rps: 15      # steady state observed 19.1/s
+  min_samples: 4000           # full run observed 4,896
+
+transactions:
+  100_Create_Post:
+    p95_response_time_ms_max: 300   # observed 133
+    p99_response_time_ms_max: 400   # observed 153
+  200_List_Posts:
+    p95_response_time_ms_max: 60    # observed 29
+    p99_response_time_ms_max: 150   # observed 60
+  300_Get_Single_Post:
+    p95_response_time_ms_max: 120   # observed 32
+    p99_response_time_ms_max: 250   # observed 67
