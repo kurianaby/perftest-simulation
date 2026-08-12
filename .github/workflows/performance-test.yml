@@ -1,0 +1,118 @@
+name: Performance Test
+
+on:
+  pull_request:
+    paths:
+      - 'tests/**'
+      - 'ci/**'
+      - 'thresholds.yaml'
+      - '.github/workflows/performance-test.yml'
+  schedule:
+    - cron: '0 2 * * 1-5'      # 02:00 UTC, weekdays
+  workflow_dispatch:
+    inputs:
+      users:
+        description: 'Concurrent users'
+        default: '20'
+      rampup:
+        description: 'Ramp-up period (s)'
+        default: '90'
+      duration:
+        description: 'Steady-state duration (s)'
+        default: '300'
+      warmup:
+        description: 'Seconds excluded from latency percentiles'
+        default: '90'
+
+
+concurrency:
+  group: performance-test
+  cancel-in-progress: false
+
+env:
+  JMETER_VERSION: '5.6.3'
+  USERS:    ${{ github.event.inputs.users    || '20' }}
+  RAMPUP:   ${{ github.event.inputs.rampup   || '90' }}
+  DURATION: ${{ github.event.inputs.duration || '300' }}
+  WARMUP:   ${{ github.event.inputs.warmup   || '90' }}
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: '.python-version'
+
+      - name: Install gate dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache JMeter
+        id: jmeter-cache
+        uses: actions/cache@v4
+        with:
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          key: jmeter-${{ env.JMETER_VERSION }}
+
+      - name: Install JMeter
+        if: steps.jmeter-cache.outputs.cache-hit != 'true'
+        run: |
+          BASE="https://archive.apache.org/dist/jmeter/binaries"
+          TARBALL="apache-jmeter-${JMETER_VERSION}.tgz"
+
+          curl -sSfL -o "${TARBALL}"        "${BASE}/${TARBALL}"
+          curl -sSfL -o "${TARBALL}.sha512" "${BASE}/${TARBALL}.sha512"
+
+          sha512sum -c "${TARBALL}.sha512"
+          tar -xzf "${TARBALL}"
+
+      - name: Run load test
+        run: |
+          mkdir -p results
+          ./apache-jmeter-${JMETER_VERSION}/bin/jmeter -n \
+            -t tests/Jmeter_Test_Simulation.jmx \
+            -Jusers="${USERS}" \
+            -Jrampup="${RAMPUP}" \
+            -Jduration="${DURATION}" \
+            -l results/results.jtl \
+            -j results/jmeter.log \
+            -e -o results/dashboard
+
+      - name: Evaluate NFR thresholds
+        run: |
+          python ci/check_thresholds.py \
+            results/results.jtl \
+            thresholds.yaml \
+            --warmup-seconds "${WARMUP}" \
+            | tee results/gate-report.txt
+          exit "${PIPESTATUS[0]}"
+
+      - name: Publish results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results-${{ github.run_number }}
+          path: results/
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Performance test"
+            echo ""
+            echo "\`${USERS}\` users / \`${RAMPUP}\`s ramp / \`${DURATION}\`s duration"
+            echo ""
+            echo '```'
+            cat results/gate-report.txt 2>/dev/null || echo "Run failed before gate evaluation."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
