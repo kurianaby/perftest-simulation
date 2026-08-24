@@ -2,7 +2,7 @@
  
 JMeter load test of a three-step journey against `jsonplaceholder.typicode.com`, gated
 in GitHub Actions against NFRs held as versioned configuration. Measured results:
-[RESULTS.md](RESULTS.md).
+[RESULTS.MD](RESULTS.MD).
  
 ```
 thresholds.yaml          NFRs as code — the contract the pipeline enforces
